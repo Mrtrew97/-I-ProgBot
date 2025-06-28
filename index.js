@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
-
-const fetch = global.fetch;
+const fetch = require('node-fetch');
+const express = require('express');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -55,9 +55,17 @@ function formatStat(val1, val2) {
   const num2 = Number(val2) || 0;
 
   const part1 = formatNumber(num1);
-  const part2 = num2 === 0 ? '[No Change For This Period]' : `[+${formatNumber(num2)}]`;
 
-  return `${part1} ${part2}`;
+  let part2;
+  if (num2 === 0) {
+    part2 = '🔹 No Change';
+  } else if (num2 > 0) {
+    part2 = `🟢 +${formatNumber(num2)}`;
+  } else {
+    part2 = `🔴 ${formatNumber(num2)}`;
+  }
+
+  return `${part1} (${part2})`;
 }
 
 client.on('interactionCreate', async (interaction) => {
@@ -143,7 +151,6 @@ client.on('interactionCreate', async (interaction) => {
     description += `    ○ ${displayNames.ore_gathered}: ${formatNumber(row[23])}\n`;
     description += `    ○ ${displayNames.mana_gathered}: ${formatNumber(row[24])}\n\n`;
 
-    // 📅 Data Period from AE (row[30]) to AD (row[29])
     description += `📅 Data Period from ${row[30]} to ${row[29]}`;
 
     const embed = new EmbedBuilder()
@@ -162,3 +169,15 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(TOKEN);
+
+// 🟢 Express Web Server (for Render)
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Web server listening on port ${PORT}`);
+});
