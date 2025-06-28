@@ -1,6 +1,5 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
-const fetch = require('node-fetch');
 const express = require('express');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
