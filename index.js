@@ -3,12 +3,25 @@ const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('disco
 const express = require('express');
 const fetch = require('node-fetch'); // ✅ Needed for fetch()
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.SERVER_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
+const PORT = process.env.PORT || 3000;
+
+console.log('Loaded environment variables:');
+console.log('DISCORD_TOKEN:', TOKEN ? '✅ Yes' : '❌ No');
+console.log('CLIENT_ID:', CLIENT_ID || '❌ Missing');
+console.log('GUILD_ID:', GUILD_ID || '❌ Missing');
+console.log('CHANNEL_ID:', CHANNEL_ID || '❌ Missing');
+console.log('PORT:', PORT);
+
+if (!TOKEN) {
+  console.error('❌ DISCORD_TOKEN is missing! Exiting...');
+  process.exit(1);
+}
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 let isProcessing = false;
 
@@ -55,9 +68,10 @@ function formatStat(val1, val2) {
   const num2 = Number(val2) || 0;
 
   const part1 = formatNumber(num1);
-  const part2 = num2 === 0
-    ? '🔹 No Change'
-    : num2 > 0
+  const part2 =
+    num2 === 0
+      ? '🔹 No Change'
+      : num2 > 0
       ? `🟢 +${formatNumber(num2)}`
       : `🔴 ${formatNumber(num2)}`;
 
@@ -67,6 +81,8 @@ function formatStat(val1, val2) {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // Uncomment below to test ignoring channel restrictions:
+  /*
   if (interaction.channelId !== CHANNEL_ID) {
     await interaction.reply({
       content: '❌ Commands can only be used in the designated channel.',
@@ -74,6 +90,7 @@ client.on('interactionCreate', async (interaction) => {
     });
     return;
   }
+  */
 
   if (isProcessing) {
     await interaction.reply({
@@ -89,7 +106,7 @@ client.on('interactionCreate', async (interaction) => {
   if (!['daily', 'weekly', 'season'].includes(commandName)) return;
 
   isProcessing = true;
-  await interaction.deferReply(); // ⏳ defers reply so it doesn't timeout
+  await interaction.deferReply();
 
   const baseUrl = process.env.API_BASE_URL;
 
@@ -99,6 +116,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (result.error || !result.rowData) {
       await interaction.editReply(`❌ Error: ${result.error || 'No data found.'}`);
+      isProcessing = false;
       return;
     }
 
@@ -124,7 +142,7 @@ client.on('interactionCreate', async (interaction) => {
       gold_gathered: 'Gold Gathered',
       wood_gathered: 'Wood Gathered',
       ore_gathered: 'Ore Gathered',
-      mana_gathered: 'Mana Gathered'
+      mana_gathered: 'Mana Gathered',
     };
 
     let description = '';
@@ -152,11 +170,10 @@ client.on('interactionCreate', async (interaction) => {
 
     const embed = new EmbedBuilder()
       .setTitle(`${commandName.toUpperCase()} stats for ${name} ID: ${id}`)
-      .setColor(0x00AE86)
+      .setColor(0x00ae86)
       .setDescription(description);
 
     await interaction.editReply({ embeds: [embed] });
-
   } catch (error) {
     console.error('❌ Error fetching data:', error);
     await interaction.editReply('❌ Failed to fetch data. Please try again later.');
@@ -169,7 +186,6 @@ client.login(TOKEN);
 
 // 🟢 Keep-alive server for Render
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
   res.send('Bot is running!');
