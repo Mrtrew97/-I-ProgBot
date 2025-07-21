@@ -148,7 +148,7 @@ client.on('interactionCreate', async (interaction) => {
   try {
     console.log(`Processing command /${commandName} with ID: ${id}`);
 
-    const baseUrl = process.env.API_BASE_URL || 'https://script.google.com/macros/s/AKfycbwTXyJk_kvqjbyD4mQr6xHOKof0SQqOJq-cvOsbetDlNDA69sRXC4HmXAI3igtP7kuD/exec';
+    const baseUrl = process.env.API_BASE_URL || 'https://script.google.com/macros/s/AKfycbz8GF8moOSvHiyljhyn1cbXeYt2hlPLrdpB018fIcpFgkR_xi_j0vxmsKoOBkD6mCoq/exec';
 
     const url = new URL(baseUrl);
     url.searchParams.append('type', commandName);
