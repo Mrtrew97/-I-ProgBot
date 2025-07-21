@@ -29,9 +29,7 @@ const client = new Client({
 let isProcessing = false;
 
 // Setup REST for slash commands registration (optional, you can register commands separately)
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-// Example slash commands registration (uncomment to use)
+// (left commented for you to enable)
 /*
 (async () => {
   try {
@@ -105,24 +103,31 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
-  // Defer reply immediately to avoid timeout
+  if (isProcessing) {
+    try {
+      // If interaction not deferred yet, reply instead of editReply
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.reply({
+          content: '⏳ Bot is busy processing another request. Please wait a moment.',
+          ephemeral: true,
+        });
+      } else {
+        await interaction.editReply({
+          content: '⏳ Bot is busy processing another request. Please wait a moment.',
+        });
+      }
+    } catch (err) {
+      console.error('Error sending busy message:', err);
+    }
+    return;
+  }
+
   try {
+    // Defer reply immediately to avoid 3s timeout
     await interaction.deferReply();
     console.log(`Deferred reply for command /${interaction.commandName}`);
   } catch (error) {
     console.error('Failed to defer reply:', error);
-    return;
-  }
-
-  if (isProcessing) {
-    // Already deferred, so editReply instead of reply
-    try {
-      await interaction.editReply({
-        content: '⏳ Bot is busy processing another request. Please wait a moment.',
-      });
-    } catch (err) {
-      console.error('Error sending busy message:', err);
-    }
     return;
   }
 
@@ -143,11 +148,8 @@ client.on('interactionCreate', async (interaction) => {
   try {
     console.log(`Processing command /${commandName} with ID: ${id}`);
 
-    // Build the API URL depending on command
-    // Replace with your actual API base URL and parameters
     const baseUrl = process.env.API_BASE_URL || 'https://script.google.com/macros/s/AKfycbwTXyJk_kvqjbyD4mQr6xHOKof0SQqOJq-cvOsbetDlNDA69sRXC4HmXAI3igtP7kuD/exec';
 
-    // For example:
     const url = new URL(baseUrl);
     url.searchParams.append('type', commandName);
     url.searchParams.append('id', id);
@@ -158,7 +160,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!response.ok) {
       console.error('Fetch error:', response.status, response.statusText);
       await interaction.editReply(`❌ Failed to fetch data: ${response.status} ${response.statusText}`);
-      isProcessing = false;
       return;
     }
 
@@ -166,29 +167,31 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!data || !data.success) {
       await interaction.editReply('❌ No data found or API returned failure.');
-      isProcessing = false;
       return;
     }
 
-    // Build embed message from data (adjust fields according to your data structure)
+    // Build embed message from data
     const embed = new EmbedBuilder()
       .setTitle(`${commandName.toUpperCase()} stats for ${data.name || 'Unknown'} ID: ${data.id || id}`)
       .setColor('#0099ff')
       .setTimestamp()
       .setFooter({ text: 'Progress Report Bot' });
 
-    // Example: add fields if available
     if (data.power) embed.addFields({ name: 'Power', value: data.power.toString(), inline: true });
     if (data.kills) embed.addFields({ name: 'Kills', value: data.kills.toString(), inline: true });
     if (data.dataPeriod) embed.addFields({ name: 'Data Period', value: data.dataPeriod, inline: false });
 
-    // Edit the deferred reply with embed
     await interaction.editReply({ embeds: [embed] });
     console.log('Reply sent successfully.');
   } catch (error) {
     console.error('Error processing command:', error);
     try {
-      await interaction.editReply('❌ An error occurred while processing your request.');
+      // If deferred reply exists, edit it; else try reply as fallback
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply('❌ An error occurred while processing your request.');
+      } else {
+        await interaction.reply('❌ An error occurred while processing your request.');
+      }
     } catch (err) {
       console.error('Failed to send error message to Discord:', err);
     }
