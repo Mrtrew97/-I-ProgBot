@@ -44,14 +44,13 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   try {
-    await interaction.deferReply().catch((error) => {
-      console.error('❌ Failed to defer reply:', error);
-    });
+    await interaction.deferReply();
     console.log(`Deferred reply for command /${interaction.commandName}`);
   } catch (error) {
-    console.error('❌ Failed to defer:', error);
-    return;
+    console.error('❌ Failed to defer reply:', error);
+    return; // Don't proceed if deferring failed
   }
+
 
   if (isProcessing) {
     try {
