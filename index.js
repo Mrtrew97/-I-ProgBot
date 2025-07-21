@@ -3,24 +3,21 @@ const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('disco
 const express = require('express');
 const fetch = require('node-fetch'); // ✅ Needed for fetch()
 
-// Create Discord client with Guilds intent
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-// Load env variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.SERVER_ID;
+const GUILD_ID = process.env.GUILD_ID || process.env.SERVER_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 console.log('Loaded environment variables:');
-console.log('DISCORD_TOKEN:', TOKEN ? '✅ Yes' : '❌ No');
-console.log('CLIENT_ID:', CLIENT_ID);
-console.log('GUILD_ID:', GUILD_ID);
-console.log('CHANNEL_ID:', CHANNEL_ID);
+console.log('DISCORD_TOKEN:', TOKEN ? '✅ Yes' : '❌ Missing');
+console.log('CLIENT_ID:', CLIENT_ID || '❌ Missing');
+console.log('GUILD_ID:', GUILD_ID || '❌ Missing');
+console.log('CHANNEL_ID:', CHANNEL_ID || '❌ Missing');
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 let isProcessing = false;
 
-// Slash commands setup
 const commands = [
   {
     name: 'daily',
@@ -39,7 +36,6 @@ const commands = [
   },
 ];
 
-// Register slash commands on bot ready
 async function registerCommands() {
   try {
     const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -50,7 +46,20 @@ async function registerCommands() {
   }
 }
 
-// Format helpers
+client.once('ready', () => {
+  console.log(`🤖 Logged in as ${client.user.tag}`);
+  registerCommands();
+});
+
+// Gateway debug event listeners:
+client.ws.on('DEBUG', (info) => console.debug('[WS DEBUG]', info));
+client.ws.on('ERROR', (error) => console.error('[WS ERROR]', error));
+client.ws.on('GATEWAY_HEARTBEAT', () => console.log('[WS] Heartbeat sent'));
+client.ws.on('GATEWAY_READY', () => console.log('[WS] Gateway ready'));
+client.ws.on('GATEWAY_RESUMED', () => console.log('[WS] Gateway resumed'));
+client.ws.on('GATEWAY_INVALID_SESSION', () => console.warn('[WS] Invalid session received'));
+client.ws.on('GATEWAY_DISCONNECT', (event) => console.warn('[WS] Disconnected:', event));
+
 function formatNumber(num) {
   const n = Number(num);
   return isNaN(n) ? 'N/A' : n.toLocaleString();
@@ -69,11 +78,6 @@ function formatStat(val1, val2) {
 
   return `${part1} (${part2})`;
 }
-
-client.once('ready', () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
-  registerCommands();
-});
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -172,21 +176,19 @@ client.on('interactionCreate', async (interaction) => {
   } catch (error) {
     console.error('❌ Error fetching data:', error);
     await interaction.editReply('❌ Failed to fetch data. Please try again later.');
+  } finally {
+    isProcessing = false;
   }
-
-  isProcessing = false;
 });
 
-// Add error/warn/debug event listeners for extra logs
-client.on('error', error => console.error('Discord client error:', error));
-client.on('warn', info => console.warn('Discord client warn:', info));
-client.on('debug', info => console.debug('Discord client debug:', info));
+client.on('error', (error) => {
+  console.error('Client error:', error);
+});
 
-// Login with token and catch errors
 client.login(TOKEN)
-  .then(() => console.log('Discord client logged in successfully.'))
-  .catch(err => {
-    console.error('❌ Discord client login failed:', err);
+  .then(() => console.log('Discord client login successful.'))
+  .catch((error) => {
+    console.error('Discord client login failed:', error);
     process.exit(1);
   });
 
