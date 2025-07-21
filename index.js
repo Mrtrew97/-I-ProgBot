@@ -1,203 +1,215 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, EmbedBuilder } = require('discord.js');
+const fetch = require('node-fetch');
 const express = require('express');
-const fetch = require('node-fetch'); // ✅ Needed for fetch()
 
+// Load env variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID || process.env.SERVER_ID;
+const GUILD_ID = process.env.GUILD_ID;  // make sure this matches your server ID
 const CHANNEL_ID = process.env.CHANNEL_ID;
+const PORT = process.env.PORT || 10000;
 
 console.log('Loaded environment variables:');
-console.log('DISCORD_TOKEN:', TOKEN ? '✅ Yes' : '❌ Missing');
-console.log('CLIENT_ID:', CLIENT_ID || '❌ Missing');
-console.log('GUILD_ID:', GUILD_ID || '❌ Missing');
-console.log('CHANNEL_ID:', CHANNEL_ID || '❌ Missing');
+console.log('DISCORD_TOKEN:', TOKEN ? '✅ Yes' : '❌ No');
+console.log('CLIENT_ID:', CLIENT_ID);
+console.log('GUILD_ID:', GUILD_ID);
+console.log('CHANNEL_ID:', CHANNEL_ID);
+console.log('PORT:', PORT);
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+  partials: [Partials.Channel],
+});
 
 let isProcessing = false;
 
-const commands = [
-  {
-    name: 'daily',
-    description: 'Get daily stats by ID',
-    options: [{ name: 'id', type: 3, description: 'Player ID', required: true }],
-  },
-  {
-    name: 'weekly',
-    description: 'Get weekly stats by ID',
-    options: [{ name: 'id', type: 3, description: 'Player ID', required: true }],
-  },
-  {
-    name: 'season',
-    description: 'Get season stats by ID',
-    options: [{ name: 'id', type: 3, description: 'Player ID', required: true }],
-  },
-];
+// Setup REST for slash commands registration (optional, you can register commands separately)
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-async function registerCommands() {
+// Example slash commands registration (uncomment to use)
+/*
+(async () => {
   try {
-    const rest = new REST({ version: '10' }).setToken(TOKEN);
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log('✅ Slash commands registered.');
+    console.log('Started refreshing application (/) commands.');
+
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      {
+        body: [
+          {
+            name: 'daily',
+            description: 'Get daily stats by ID',
+            options: [
+              {
+                name: 'id',
+                description: 'ID to lookup',
+                type: 3, // STRING
+                required: true,
+              },
+            ],
+          },
+          {
+            name: 'weekly',
+            description: 'Get weekly stats by ID',
+            options: [
+              {
+                name: 'id',
+                description: 'ID to lookup',
+                type: 3, // STRING
+                required: true,
+              },
+            ],
+          },
+          {
+            name: 'season',
+            description: 'Get season stats by ID',
+            options: [
+              {
+                name: 'id',
+                description: 'ID to lookup',
+                type: 3, // STRING
+                required: true,
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    console.log('Successfully reloaded application (/) commands.');
   } catch (error) {
-    console.error('❌ Error registering commands:', error);
+    console.error(error);
   }
-}
+})();
+*/
 
-client.once('ready', () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
-  registerCommands();
-});
-
-// Gateway debug event listeners:
-client.ws.on('DEBUG', (info) => console.debug('[WS DEBUG]', info));
-client.ws.on('ERROR', (error) => console.error('[WS ERROR]', error));
-client.ws.on('GATEWAY_HEARTBEAT', () => console.log('[WS] Heartbeat sent'));
-client.ws.on('GATEWAY_READY', () => console.log('[WS] Gateway ready'));
-client.ws.on('GATEWAY_RESUMED', () => console.log('[WS] Gateway resumed'));
-client.ws.on('GATEWAY_INVALID_SESSION', () => console.warn('[WS] Invalid session received'));
-client.ws.on('GATEWAY_DISCONNECT', (event) => console.warn('[WS] Disconnected:', event));
-
-function formatNumber(num) {
-  const n = Number(num);
-  return isNaN(n) ? 'N/A' : n.toLocaleString();
-}
-
-function formatStat(val1, val2) {
-  const num1 = Number(val1) || 0;
-  const num2 = Number(val2) || 0;
-
-  const part1 = formatNumber(num1);
-  const part2 = num2 === 0
-    ? '🔹 No Change'
-    : num2 > 0
-      ? `🟢 +${formatNumber(num2)}`
-      : `🔴 ${formatNumber(num2)}`;
-
-  return `${part1} (${part2})`;
-}
-
+// Interaction handler
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // Only allow commands in designated channel
   if (interaction.channelId !== CHANNEL_ID) {
-    await interaction.reply({
-      content: '❌ Commands can only be used in the designated channel.',
-      ephemeral: true,
-    });
+    try {
+      await interaction.reply({
+        content: '❌ Commands can only be used in the designated channel.',
+        ephemeral: true,
+      });
+    } catch (err) {
+      console.error('Error replying to command in wrong channel:', err);
+    }
+    return;
+  }
+
+  // Defer reply immediately to avoid timeout
+  try {
+    await interaction.deferReply();
+    console.log(`Deferred reply for command /${interaction.commandName}`);
+  } catch (error) {
+    console.error('Failed to defer reply:', error);
     return;
   }
 
   if (isProcessing) {
-    await interaction.reply({
-      content: '⏳ Bot is busy processing another request. Please wait a moment.',
-      ephemeral: true,
-    });
+    // Already deferred, so editReply instead of reply
+    try {
+      await interaction.editReply({
+        content: '⏳ Bot is busy processing another request. Please wait a moment.',
+      });
+    } catch (err) {
+      console.error('Error sending busy message:', err);
+    }
     return;
   }
 
-  const commandName = interaction.commandName;
+  const commandName = interaction.commandName.toLowerCase();
   const id = interaction.options.getString('id');
 
-  if (!['daily', 'weekly', 'season'].includes(commandName)) return;
+  if (!['daily', 'weekly', 'season'].includes(commandName)) {
+    try {
+      await interaction.editReply('❌ Unknown command.');
+    } catch (err) {
+      console.error('Error sending unknown command reply:', err);
+    }
+    return;
+  }
 
   isProcessing = true;
-  await interaction.deferReply(); // ⏳ defers reply so it doesn't timeout
-
-  const baseUrl = process.env.API_BASE_URL;
 
   try {
-    const response = await fetch(`${baseUrl}?type=${commandName}&id=${id}`);
-    const result = await response.json();
+    console.log(`Processing command /${commandName} with ID: ${id}`);
 
-    if (result.error || !result.rowData) {
-      await interaction.editReply(`❌ Error: ${result.error || 'No data found.'}`);
+    // Build the API URL depending on command
+    // Replace with your actual API base URL and parameters
+    const baseUrl = process.env.API_BASE_URL || 'https://script.google.com/macros/s/AKfycbwTXyJk_kvqjbyD4mQr6xHOKof0SQqOJq-cvOsbetDlNDA69sRXC4HmXAI3igtP7kuD/exec';
+
+    // For example:
+    const url = new URL(baseUrl);
+    url.searchParams.append('type', commandName);
+    url.searchParams.append('id', id);
+
+    console.log('Fetching data from URL:', url.toString());
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('Fetch error:', response.status, response.statusText);
+      await interaction.editReply(`❌ Failed to fetch data: ${response.status} ${response.statusText}`);
       isProcessing = false;
       return;
     }
 
-    const row = result.rowData;
-    const name = row[3]; // Column D (name)
+    const data = await response.json();
 
-    const displayNames = {
-      power: '⚡ **Power**',
-      kills: '⚔️ **Kills**',
-      t5_killed: 'T5 Killed',
-      t4_killed: 'T4 Killed',
-      t3_killed: 'T3 Killed',
-      t2_killed: 'T2 Killed',
-      t1_killed: 'T1 Killed',
-      deads: '💀 **Deads**',
-      healed: '💖 **Healed**',
-      rss_spent: '📉 **RSS Spent**',
-      gold_spent: 'Gold Spent',
-      wood_spent: 'Wood Spent',
-      ore_spent: 'Ore Spent',
-      mana_spent: 'Mana Spent',
-      rss_gathered: '📈 **RSS Gathered**',
-      gold_gathered: 'Gold Gathered',
-      wood_gathered: 'Wood Gathered',
-      ore_gathered: 'Ore Gathered',
-      mana_gathered: 'Mana Gathered'
-    };
+    if (!data || !data.success) {
+      await interaction.editReply('❌ No data found or API returned failure.');
+      isProcessing = false;
+      return;
+    }
 
-    let description = '';
-
-    description += `${displayNames.power}: ${formatNumber(row[9])} [${formatNumber(row[10])}]\n\n`;
-    description += `${displayNames.kills}: ${formatStat(row[13], row[14])}\n`;
-    description += `    ○ ${displayNames.t5_killed}: ${formatStat(row[42], row[36])}\n`;
-    description += `    ○ ${displayNames.t4_killed}: ${formatStat(row[43], row[37])}\n`;
-    description += `    ○ ${displayNames.t3_killed}: ${formatStat(row[44], row[38])}\n`;
-    description += `    ○ ${displayNames.t2_killed}: ${formatStat(row[45], row[39])}\n`;
-    description += `    ○ ${displayNames.t1_killed}: ${formatStat(row[46], row[40])}\n\n`;
-    description += `${displayNames.deads}: ${formatStat(row[17], row[18])}\n\n`;
-    description += `${displayNames.healed}: ${formatStat(row[15], row[16])}\n\n`;
-    description += `${displayNames.rss_spent}: ${formatNumber(row[41])}\n`;
-    description += `    ○ ${displayNames.gold_spent}: ${formatNumber(row[25])}\n`;
-    description += `    ○ ${displayNames.wood_spent}: ${formatNumber(row[26])}\n`;
-    description += `    ○ ${displayNames.ore_spent}: ${formatNumber(row[27])}\n`;
-    description += `    ○ ${displayNames.mana_spent}: ${formatNumber(row[28])}\n\n`;
-    description += `${displayNames.rss_gathered}: ${formatNumber(row[20])}\n`;
-    description += `    ○ ${displayNames.gold_gathered}: ${formatNumber(row[21])}\n`;
-    description += `    ○ ${displayNames.wood_gathered}: ${formatNumber(row[22])}\n`;
-    description += `    ○ ${displayNames.ore_gathered}: ${formatNumber(row[23])}\n`;
-    description += `    ○ ${displayNames.mana_gathered}: ${formatNumber(row[24])}\n\n`;
-    description += `📅 Data Period from ${row[30]} to ${row[29]}`;
-
+    // Build embed message from data (adjust fields according to your data structure)
     const embed = new EmbedBuilder()
-      .setTitle(`${commandName.toUpperCase()} stats for ${name} ID: ${id}`)
-      .setColor(0x00AE86)
-      .setDescription(description);
+      .setTitle(`${commandName.toUpperCase()} stats for ${data.name || 'Unknown'} ID: ${data.id || id}`)
+      .setColor('#0099ff')
+      .setTimestamp()
+      .setFooter({ text: 'Progress Report Bot' });
 
+    // Example: add fields if available
+    if (data.power) embed.addFields({ name: 'Power', value: data.power.toString(), inline: true });
+    if (data.kills) embed.addFields({ name: 'Kills', value: data.kills.toString(), inline: true });
+    if (data.dataPeriod) embed.addFields({ name: 'Data Period', value: data.dataPeriod, inline: false });
+
+    // Edit the deferred reply with embed
     await interaction.editReply({ embeds: [embed] });
-
+    console.log('Reply sent successfully.');
   } catch (error) {
-    console.error('❌ Error fetching data:', error);
-    await interaction.editReply('❌ Failed to fetch data. Please try again later.');
+    console.error('Error processing command:', error);
+    try {
+      await interaction.editReply('❌ An error occurred while processing your request.');
+    } catch (err) {
+      console.error('Failed to send error message to Discord:', err);
+    }
   } finally {
     isProcessing = false;
   }
 });
 
-client.on('error', (error) => {
-  console.error('Client error:', error);
+// Login and setup
+client.once('ready', () => {
+  console.log(`✅ Discord client ready! Logged in as ${client.user.tag}`);
+});
+client.login(TOKEN).catch((err) => {
+  console.error('Failed to login:', err);
 });
 
-client.login(TOKEN)
-  .then(() => console.log('Discord client login successful.'))
-  .catch((error) => {
-    console.error('Discord client login failed:', error);
-    process.exit(1);
-  });
-
-// 🟢 Keep-alive server for Render
+// Basic web server for Render health check
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-  res.send('Bot is running!');
+  res.send('Progress Report Bot is running.');
 });
 
 app.listen(PORT, () => {
