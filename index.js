@@ -1,12 +1,12 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, REST, Routes, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
 const express = require('express');
 
 // Load env variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;  // make sure this matches your server ID
+const GUILD_ID = process.env.GUILD_ID;  // Make sure your .env has GUILD_ID, not SERVER_ID
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const PORT = process.env.PORT || 10000;
 
@@ -28,65 +28,6 @@ const client = new Client({
 
 let isProcessing = false;
 
-// Setup REST for slash commands registration (optional, you can register commands separately)
-// (left commented for you to enable)
-/*
-(async () => {
-  try {
-    console.log('Started refreshing application (/) commands.');
-
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      {
-        body: [
-          {
-            name: 'daily',
-            description: 'Get daily stats by ID',
-            options: [
-              {
-                name: 'id',
-                description: 'ID to lookup',
-                type: 3, // STRING
-                required: true,
-              },
-            ],
-          },
-          {
-            name: 'weekly',
-            description: 'Get weekly stats by ID',
-            options: [
-              {
-                name: 'id',
-                description: 'ID to lookup',
-                type: 3, // STRING
-                required: true,
-              },
-            ],
-          },
-          {
-            name: 'season',
-            description: 'Get season stats by ID',
-            options: [
-              {
-                name: 'id',
-                description: 'ID to lookup',
-                type: 3, // STRING
-                required: true,
-              },
-            ],
-          },
-        ],
-      },
-    );
-
-    console.log('Successfully reloaded application (/) commands.');
-  } catch (error) {
-    console.error(error);
-  }
-})();
-*/
-
-// Interaction handler
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -103,15 +44,17 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
+  // Check if bot is already processing another request
   if (isProcessing) {
     try {
-      // If interaction not deferred yet, reply instead of editReply
+      // If interaction has NOT been replied/deferred, reply immediately
       if (!interaction.deferred && !interaction.replied) {
         await interaction.reply({
           content: '⏳ Bot is busy processing another request. Please wait a moment.',
           ephemeral: true,
         });
       } else {
+        // If deferred or replied already, edit reply
         await interaction.editReply({
           content: '⏳ Bot is busy processing another request. Please wait a moment.',
         });
@@ -122,8 +65,8 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
+  // Safe to defer reply now
   try {
-    // Defer reply immediately to avoid 3s timeout
     await interaction.deferReply();
     console.log(`Deferred reply for command /${interaction.commandName}`);
   } catch (error) {
@@ -186,7 +129,6 @@ client.on('interactionCreate', async (interaction) => {
   } catch (error) {
     console.error('Error processing command:', error);
     try {
-      // If deferred reply exists, edit it; else try reply as fallback
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply('❌ An error occurred while processing your request.');
       } else {
