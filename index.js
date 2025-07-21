@@ -43,29 +43,24 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
-  if (isProcessing) {
-    try {
-      if (!interaction.deferred && !interaction.replied) {
-        await interaction.reply({
-          content: '⏳ Bot is busy processing another request. Please wait a moment.',
-          ephemeral: true,
-        });
-      } else {
-        await interaction.editReply({
-          content: '⏳ Bot is busy processing another request. Please wait a moment.',
-        });
-      }
-    } catch (err) {
-      console.error('Error sending busy message:', err);
-    }
+  try {
+    await interaction.deferReply().catch((error) => {
+      console.error('❌ Failed to defer reply:', error);
+    });
+    console.log(`Deferred reply for command /${interaction.commandName}`);
+  } catch (error) {
+    console.error('❌ Failed to defer:', error);
     return;
   }
 
-  try {
-    await interaction.deferReply();
-    console.log(`Deferred reply for command /${interaction.commandName}`);
-  } catch (error) {
-    console.error('Failed to defer reply:', error);
+  if (isProcessing) {
+    try {
+      await interaction.editReply({
+        content: '⏳ Bot is busy processing another request. Please wait a moment.',
+      });
+    } catch (err) {
+      console.error('Error sending busy message:', err);
+    }
     return;
   }
 
@@ -129,7 +124,6 @@ client.on('interactionCreate', async (interaction) => {
     const kills = getSumSafe(row, 13, 14);
     const deads = getSumSafe(row, 17, 18);
     const healed = getSumSafe(row, 15, 16);
-
     const t5 = getSumSafe(row, 42, 36);
     const t4 = getSumSafe(row, 43, 37);
     const t3 = getSumSafe(row, 44, 38);
