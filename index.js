@@ -1,4 +1,5 @@
 require('dotenv').config();
+const fetch = require('node-fetch'); // ✅ Ensures fetch works on Render
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
 const express = require('express');
 
@@ -33,14 +34,14 @@ async function registerCommands() {
   try {
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log('Commands registered.');
+    console.log('✅ Commands registered.');
   } catch (error) {
-    console.error('Error registering commands:', error);
+    console.error('❌ Error registering commands:', error);
   }
 }
 
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
   registerCommands();
 });
 
@@ -84,18 +85,26 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!['daily', 'weekly', 'season'].includes(commandName)) return;
 
+  console.log(`📩 Received /${commandName} for ID: ${id}`);
   isProcessing = true;
-  await interaction.deferReply();
 
-  const baseUrl = process.env.API_BASE_URL;
+  // Timeout fallback in case deferReply fails
+  const timeout = setTimeout(() => {
+    if (!interaction.deferred && !interaction.replied) {
+      interaction.reply({ content: "⚠️ This is taking longer than expected...", ephemeral: true });
+    }
+  }, 2500);
 
   try {
+    await interaction.deferReply();
+    const baseUrl = process.env.API_BASE_URL;
     const response = await fetch(`${baseUrl}?type=${commandName}&id=${id}`);
+
+    if (!response.ok) throw new Error(`Fetch failed with status ${response.status}`);
     const result = await response.json();
 
     if (result.error || !result.rowData) {
       await interaction.editReply(`Error: ${result.error || 'No data found'}`);
-      isProcessing = false;
       return;
     }
 
@@ -158,25 +167,23 @@ client.on('interactionCreate', async (interaction) => {
       .setDescription(description);
 
     await interaction.editReply({ embeds: [embed] });
-
   } catch (error) {
-    console.error('Error fetching data:', error);
-    await interaction.editReply('There was an error fetching the data.');
+    console.error('❌ Error in interaction handler:', error);
+    if (!interaction.replied) {
+      await interaction.reply({ content: 'There was an error processing your request.', ephemeral: true });
+    } else {
+      await interaction.editReply('There was an error fetching the data.');
+    }
+  } finally {
+    clearTimeout(timeout);
+    isProcessing = false;
   }
-
-  isProcessing = false;
 });
 
 client.login(TOKEN);
 
-// 🟢 Express Web Server (for Render)
+// ✅ Web server for Render health checks
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-  res.send('Bot is running!');
-});
-
-app.listen(PORT, () => {
-  console.log(`Web server listening on port ${PORT}`);
-});
+app.get('/', (req, res) => res.send('Bot is running!'));
+app.listen(PORT, () => console.log(`✅ Web server listening on port ${PORT}`));
